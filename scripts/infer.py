@@ -8,10 +8,12 @@
 """
 Infinite policy inference without recording.
 
-Reuses `record_loop` from `lerobot_record` but:
+Lightweight control loop that avoids `record_loop`/`dataset.add_frame` overhead:
 - Loops forever until Ctrl+C (num_episodes ignored).
-- Never calls `save_episode()` (dataset buffer is cleared each iteration).
-- Dataset root defaults to /dev/shm (RAM) so zero disk I/O for frames.
+- No `save_episode()`, no buffered frames, no video encoding.
+- Dataset root defaults to /dev/shm (RAM, Linux) with a tempdir fallback on platforms
+  without tmpfs (e.g. macOS). The scratch dataset is created only to obtain the feature
+  schema/stats needed by `make_policy` and `make_pre_post_processors`.
 
 Run:
     python -m lerobot.scripts.lerobot_infer \
@@ -24,22 +26,26 @@ Run:
 """
 
 import logging
-from dataclasses import asdict, dataclass
+import tempfile
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from pprint import pformat
 
+from lerobot.cameras import CameraConfig  # noqa: F401  — ensures camera ChoiceRegistry is loaded
+from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401  — registers "opencv" choice
+from lerobot.common.control_utils import init_keyboard_listener, is_headless, predict_action
 from lerobot.configs import PreTrainedConfig, parser
 from lerobot.datasets import (
     LeRobotDataset,
-    VideoEncodingManager,
     aggregate_pipeline_dataset_features,
     create_initial_features,
 )
 from lerobot.policies import (
-    ActionInterpolator,
     make_policy,
     make_pre_post_processors,
 )
+from lerobot.policies.utils import make_robot_action
 from lerobot.processor import (
     make_default_processors,
     rename_stats,
@@ -58,12 +64,13 @@ from lerobot.robots import (  # noqa: F401
     so_follower,
     unitree_g1 as unitree_g1_robot,
 )
-from lerobot.scripts.lerobot_record import record_loop
-from lerobot.utils.feature_utils import combine_feature_dicts
+from lerobot.utils.constants import OBS_STR
+from lerobot.utils.device_utils import get_safe_torch_device
+from lerobot.utils.feature_utils import build_dataset_frame, combine_feature_dicts
 from lerobot.utils.import_utils import register_third_party_plugins
+from lerobot.utils.robot_utils import precise_sleep
 from lerobot.utils.utils import init_logging, log_say
-from lerobot.utils.visualization_utils import init_rerun
-from lerobot.common.control_utils import init_keyboard_listener, is_headless
+from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 
 
 @dataclass
@@ -75,18 +82,21 @@ class InferConfig:
     # Control loop FPS (must match policy training FPS).
     fps: int = 30
     # Length of one inference pass in seconds. Loop starts a new pass immediately after.
-    episode_time_s: float = 60.0
-    # Scratch dataset root — defaults to RAM so no disk writes.
-    dataset_root: str = "/dev/shm/lerobot_infer"
+    episode_time_s: float = 10.0
+    # Scratch dataset root — Linux: /dev/shm (RAM); other platforms: system tempdir.
+    dataset_root: str = field(
+        default_factory=lambda: str(
+            Path("/dev/shm" if Path("/dev/shm").is_dir() else tempfile.gettempdir())
+            / "lerobot_infer"
+        )
+    )
     # Display cameras/actions via Rerun.
     display_data: bool = False
     display_ip: str | None = None
     display_port: int | None = None
     display_compressed_images: bool = False
-    # Speak status messages.
-    play_sounds: bool = False
-    # Smoother policy control (1 = off).
-    interpolation_multiplier: int = 1
+    # Speak status messages via system TTS (macOS `say`, Linux `spd-say`).
+    play_sounds: bool = True
 
     def __post_init__(self):
         # Mirror RecordConfig: re-parse policy path so --policy.path loads the checkpoint config.
@@ -133,8 +143,8 @@ def infer(cfg: InferConfig) -> None:
         ),
     )
 
-    # Scratch dataset lives in RAM and is recreated on each run. It's only needed for
-    # feature schema + buffer during a pass — we never call save_episode().
+    # Scratch dataset lives in RAM (Linux) or tempdir. Created only to derive feature schema + stats.
+    # It is never written to during the loop — no add_frame, no save_episode, no video encoding.
     dataset_root = Path(cfg.dataset_root)
     if dataset_root.exists():
         import shutil
@@ -168,41 +178,67 @@ def infer(cfg: InferConfig) -> None:
             },
         )
 
-        interpolator = None
-        if cfg.interpolation_multiplier > 1:
-            interpolator = ActionInterpolator(multiplier=cfg.interpolation_multiplier)
-            logging.info(f"Action interpolation: {cfg.interpolation_multiplier}x")
+        device = get_safe_torch_device(cfg.policy.device)
+        control_interval = 1.0 / cfg.fps
+        features = dataset.features  # local ref — avoids attr lookup inside the hot loop
 
         robot.connect()
         listener, events = init_keyboard_listener()
 
-        log_say("Inference starting (Ctrl+C to stop)", cfg.play_sounds)
+        log_say("Let's start inference bro!! (Ctrl+C to stop)", cfg.play_sounds)
 
-        with VideoEncodingManager(dataset):
-            iteration = 0
-            while not events["stop_recording"]:
-                log_say(f"Inference pass {iteration}", cfg.play_sounds)
-                record_loop(
-                    robot=robot,
-                    events=events,
-                    fps=cfg.fps,
-                    teleop_action_processor=teleop_action_processor,
-                    robot_action_processor=robot_action_processor,
-                    robot_observation_processor=robot_observation_processor,
-                    teleop=None,
+        iteration = 0
+        while not events["stop_recording"]:
+            log_say(f"Inference pass {iteration}", cfg.play_sounds)
+            policy.reset()
+            preprocessor.reset()
+            postprocessor.reset()
+
+            episode_start_t = time.perf_counter()
+            while (time.perf_counter() - episode_start_t) < cfg.episode_time_s:
+                if events["exit_early"]:
+                    events["exit_early"] = False
+                    break
+                if events["stop_recording"]:
+                    break
+
+                loop_start_t = time.perf_counter()
+
+                obs = robot.get_observation()
+                obs_processed = robot_observation_processor(obs)
+                observation_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
+
+                action_values = predict_action(
+                    observation=observation_frame,
                     policy=policy,
+                    device=device,
                     preprocessor=preprocessor,
                     postprocessor=postprocessor,
-                    dataset=dataset,
-                    control_time_s=cfg.episode_time_s,
-                    single_task=cfg.single_task,
-                    display_data=cfg.display_data,
-                    interpolator=interpolator,
-                    display_compressed_images=display_compressed_images,
+                    use_amp=cfg.policy.use_amp,
+                    task=cfg.single_task,
+                    robot_type=robot.robot_type,
                 )
-                # Drop the buffered frames — we're not saving episodes.
-                dataset.clear_episode_buffer()
-                iteration += 1
+
+                act_processed_policy = make_robot_action(action_values, features)
+                robot_action_to_send = robot_action_processor((act_processed_policy, obs))
+                robot.send_action(robot_action_to_send)
+
+                if cfg.display_data:
+                    log_rerun_data(
+                        observation=obs_processed,
+                        action=robot_action_to_send,
+                        compress_images=display_compressed_images,
+                    )
+
+                dt_s = time.perf_counter() - loop_start_t
+                sleep_s = control_interval - dt_s
+                if sleep_s < 0:
+                    logging.warning(
+                        f"Inference loop running slower ({1.0 / dt_s:.1f} Hz) than target ({cfg.fps} Hz)."
+                    )
+                precise_sleep(max(sleep_s, 0.0))
+
+            iteration += 1
     finally:
         log_say("Stopping inference", cfg.play_sounds, blocking=True)
 

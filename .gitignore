@@ -8,3 +8,7 @@ outputs/
 
 # wandb 로컬 로그
 wandb/
+
+# 로컬 머신별 환경 설정 (시리얼/카메라 인덱스)
+scripts/_env.sh
+scripts/__pycache__/

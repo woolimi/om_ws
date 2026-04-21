@@ -22,7 +22,11 @@
 # 종료: Ctrl+C
 
 set -e
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+# 로컬 환경 설정 자동 로드 (있으면)
+[[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
 CAMERA_TOP_INDEX="${CAMERA_TOP_INDEX:-2}"
 CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-0}"

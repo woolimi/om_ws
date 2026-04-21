@@ -27,16 +27,27 @@
 # 종료: Ctrl+C
 
 set -e
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+# 로컬 환경 설정 자동 로드 (있으면)
+[[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
 CAMERA_TOP_INDEX="${CAMERA_TOP_INDEX:-2}"
 CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-0}"
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
-EPISODE_TIME_S="${EPISODE_TIME_S:-60}"
-DISPLAY_DATA="${DISPLAY_DATA:-false}"
+EPISODE_TIME_S="${EPISODE_TIME_S:-30}"
+DISPLAY_DATA="${DISPLAY_DATA:-true}"
+PLAY_SOUNDS="${PLAY_SOUNDS:-true}"
 SINGLE_TASK="${SINGLE_TASK:-}"
+
+if [[ "$(uname -s)" == "Linux" ]]; then
+  POLICY_DEVICE="${POLICY_DEVICE:-cuda}"
+else
+  POLICY_DEVICE="${POLICY_DEVICE:-mps}"
+fi
 
 # ACT 추론 파라미터
 # n_action_steps=20: chunk 중 20 step 실행 후 재추론 (반응성과 속도 균형)
@@ -125,12 +136,13 @@ fi
 
 CAMERAS_JSON="{ top: {type: opencv, index_or_path: ${CAMERA_TOP_INDEX}, width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}}, wrist: {type: opencv, index_or_path: ${CAMERA_WRIST_INDEX}, width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}}}"
 
-POLICY_ARGS=()
+POLICY_ARGS=(--policy.device="${POLICY_DEVICE}")
 [[ -n "$N_ACTION_STEPS" ]] && POLICY_ARGS+=(--policy.n_action_steps="${N_ACTION_STEPS}")
 [[ -n "$TEMPORAL_ENSEMBLE_COEFF" ]] && POLICY_ARGS+=(--policy.temporal_ensemble_coeff="${TEMPORAL_ENSEMBLE_COEFF}")
 
 echo "=== LeRobot Inference (Ctrl+C to stop) ==="
 echo "Policy:   $POLICY_PATH"
+echo "Device:   ${POLICY_DEVICE}"
 echo "Cameras:  top=${CAMERA_TOP_INDEX}, wrist=${CAMERA_WRIST_INDEX} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
 echo "Episode:  ${EPISODE_TIME_S}s"
 echo "Task:     ${SINGLE_TASK}"
@@ -149,4 +161,5 @@ python scripts/infer.py \
   --fps="${CAMERA_FPS}" \
   --episode_time_s="${EPISODE_TIME_S}" \
   --display_data="${DISPLAY_DATA}" \
+  --play_sounds="${PLAY_SOUNDS}" \
   "$@"
