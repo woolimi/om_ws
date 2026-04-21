@@ -65,11 +65,11 @@ echo ""
 
 lerobot-record \
     --robot.type=omx_follower \
-    --robot.port=/dev/omx_follower \
+    --robot.port="${OMX_FOLLOWER_PORT:-/dev/omx_follower}" \
     --robot.id=omx_follower_arm \
     --robot.cameras="${CAMERAS_JSON}" \
     --teleop.type=omx_leader \
-    --teleop.port=/dev/omx_leader \
+    --teleop.port="${OMX_LEADER_PORT:-/dev/omx_leader}" \
     --teleop.id=omx_leader_arm \
     --display_data="${DISPLAY_DATA}" \
     --dataset.repo_id="${REPO_ID}" \

@@ -140,7 +140,7 @@ echo ""
 
 python scripts/infer.py \
   --robot.type=omx_follower \
-  --robot.port=/dev/omx_follower \
+  --robot.port="${OMX_FOLLOWER_PORT:-/dev/omx_follower}" \
   --robot.id=omx_follower_arm \
   --robot.cameras="${CAMERAS_JSON}" \
   --policy.path="${POLICY_PATH}" \
