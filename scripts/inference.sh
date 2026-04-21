@@ -38,6 +38,10 @@ CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-0}"
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
+V_GAMMA="${V_GAMMA:-1.0}"
+CLAHE_CLIP_LIMIT="${CLAHE_CLIP_LIMIT:-2.0}"
+CLAHE_TILE_GRID_SIZE="${CLAHE_TILE_GRID_SIZE:-8}"
+S_SCALE="${S_SCALE:-1.0}"
 EPISODE_TIME_S="${EPISODE_TIME_S:-30}"
 DISPLAY_DATA="${DISPLAY_DATA:-true}"
 PLAY_SOUNDS="${PLAY_SOUNDS:-true}"
@@ -134,7 +138,9 @@ if [[ -z "$SINGLE_TASK" ]]; then
   SINGLE_TASK="${SINGLE_TASK:-Policy inference}"
 fi
 
-CAMERAS_JSON="{ top: {type: opencv, index_or_path: ${CAMERA_TOP_INDEX}, width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}}, wrist: {type: opencv, index_or_path: ${CAMERA_WRIST_INDEX}, width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}}}"
+CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
+HSV_EXTRA="v_gamma: ${V_GAMMA}, clahe_clip_limit: ${CLAHE_CLIP_LIMIT}, clahe_tile_grid_size: ${CLAHE_TILE_GRID_SIZE}, s_scale: ${S_SCALE}"
+CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}, ${HSV_EXTRA}}, wrist: {type: opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
 
 POLICY_ARGS=(--policy.device="${POLICY_DEVICE}")
 [[ -n "$N_ACTION_STEPS" ]] && POLICY_ARGS+=(--policy.n_action_steps="${N_ACTION_STEPS}")

@@ -34,6 +34,7 @@ from pprint import pformat
 
 from lerobot.cameras import CameraConfig  # noqa: F401  — ensures camera ChoiceRegistry is loaded
 from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401  — registers "opencv" choice
+import hsv_camera  # noqa: F401  — registers "hsv_opencv" camera type
 from lerobot.common.control_utils import init_keyboard_listener, is_headless, predict_action
 from lerobot.configs import PreTrainedConfig, parser
 from lerobot.datasets import (
