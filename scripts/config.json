@@ -1,4 +1,9 @@
 {
+  "camera_top_index": 2,
+  "camera_wrist_index": 0,
+  "camera_width": 640,
+  "camera_height": 480,
+  "camera_fps": 30,
   "top": {
     "v_gamma": 1.65,
     "clahe_clip_limit": 4.0,

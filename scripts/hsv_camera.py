@@ -29,11 +29,11 @@ from numpy.typing import NDArray
 from lerobot.cameras.configs import CameraConfig, ColorMode
 from lerobot.cameras.opencv import OpenCVCamera, OpenCVCameraConfig
 
-CONFIG_PATH = Path(__file__).parent / "camera_config.json"
+CONFIG_PATH = Path(__file__).parent / "config.json"
 
 
-def load_camera_config() -> dict[str, Any]:
-    """camera_config.json 읽기. 없거나 파싱 실패하면 빈 dict."""
+def load_config() -> dict[str, Any]:
+    """config.json 읽기. 없거나 파싱 실패하면 빈 dict."""
     if not CONFIG_PATH.exists():
         return {}
     try:
@@ -44,14 +44,19 @@ def load_camera_config() -> dict[str, Any]:
         return {}
 
 
-def save_camera_config(data: dict[str, Any]) -> None:
-    """전체 dict 를 camera_config.json 에 저장."""
+def save_config(data: dict[str, Any]) -> None:
+    """전체 dict 를 config.json 에 저장."""
     with open(CONFIG_PATH, "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
         f.write("\n")
 
 
-_CFG = load_camera_config()
+# 하위 호환 alias
+load_camera_config = load_config
+save_camera_config = save_config
+
+
+_CFG = load_config()
 
 
 def _top_config() -> dict[str, Any]:
@@ -96,7 +101,7 @@ _DEFAULT_WRIST_V4L2 = {
 class V4L2OpenCVCameraConfig(OpenCVCameraConfig):
     """OpenCVCameraConfig + connect() 이후 v4l2-ctl 자동 적용.
 
-    기본값은 camera_config.json 의 wrist.v4l2_controls 에서 로드.
+    기본값은 config.json 의 wrist.v4l2_controls 에서 로드.
     """
 
     v4l2_controls: dict[str, int] = field(
@@ -131,7 +136,7 @@ _DEFAULT_TOP_V4L2 = {
 class HsvOpenCVCameraConfig(V4L2OpenCVCameraConfig):
     """V4L2OpenCVCameraConfig + HSV 후처리 파라미터.
 
-    모든 기본값은 camera_config.json 의 top 섹션에서 로드.
+    모든 기본값은 config.json 의 top 섹션에서 로드.
     Applied in order on V: gamma → CLAHE. Applied on S: saturation scale (S * s_scale).
     각각 기본값이면 비활성: v_gamma=1.0, clahe_clip_limit<=0, s_scale=1.0.
     """

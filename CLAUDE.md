@@ -62,9 +62,17 @@ om_ws/
 - **Linux**: udev rules로 `/dev/omx_follower`, `/dev/omx_leader` symlink를 만들어놓고 스크립트에서 기본값으로 사용.
 - **Mac**: udev가 없어 `scripts/setup_ports_mac.sh`가 `ioreg`로 USB Serial Number 매칭해 `OMX_FOLLOWER_PORT`, `OMX_LEADER_PORT` 환경변수를 설정. 스크립트들은 `${OMX_FOLLOWER_PORT:-/dev/omx_follower}` 형태로 둘 다 지원.
 
+### scripts/config.json — 단일 설정 파일 (Single Source of Truth)
+
+카메라 인덱스, 해상도/FPS, HSV 전처리 파라미터, v4l2 하드웨어 컨트롤 등 모든 카메라 관련 설정을 `scripts/config.json`에 통합. Python(`hsv_camera.py`, `tune_hsv.py`)과 shell(`_env.sh` → `record.sh`/`inference.sh`/`teleop.sh`) 양쪽에서 이 파일을 참조한다.
+
+- **Python 쪽**: `hsv_camera.load_config()` / `save_config()`으로 읽기/쓰기.
+- **Shell 쪽**: `_env.sh`가 python으로 config.json을 파싱해 `CAMERA_TOP_INDEX` 등 환경변수로 export. 환경변수가 이미 설정된 경우 config.json 값을 덮어쓰지 않으므로 `CAMERA_TOP_INDEX=4 ./scripts/record.sh` 같은 일회성 오버라이드도 가능.
+- **tune_hsv.py**: config.json에서 카메라 인덱스/해상도를 직접 읽음.
+
 ### scripts/_env.sh
 
-record.sh/teleop.sh/inference.sh가 시작 시 `scripts/_env.sh`가 있으면 자동 source. 시리얼 번호, 카메라 인덱스, HF_USER, HSV 파라미터, v4l2 제어값 등을 저장. 커밋되어 있으므로 수정 시 의도한 변경인지 diff 확인 후 커밋.
+record.sh/teleop.sh/inference.sh가 시작 시 `scripts/_env.sh`가 있으면 자동 source. `config.json`에서 카메라 설정을 로드하고, Mac 시리얼 매핑 등 머신별 설정을 담당.
 
 ## Data Flow
 

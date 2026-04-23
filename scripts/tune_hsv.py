@@ -1,6 +1,6 @@
 """카메라 전처리 파라미터 실시간 튜닝 도구 (tkinter UI).
 
-scripts/camera_config.json 의 값을 로드해 시작 상태를 만들고, 슬라이더로 조정 후
+scripts/config.json 의 값을 로드해 시작 상태를 만들고, 슬라이더로 조정 후
 [Save] 버튼으로 같은 파일에 저장. hsv_camera.py 가 자동으로 읽으므로 추론/녹화
 스크립트에 즉시 반영됨.
 
@@ -25,8 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hsv_camera import (  # noqa: E402
     HsvOpenCVCameraConfig,
     V4L2OpenCVCameraConfig,
-    load_camera_config,
-    save_camera_config,
+    load_config,
+    save_config,
 )
 
 # v4l2 컨트롤 → (min, max, step, description)
@@ -363,8 +363,8 @@ class TunerApp:
         return data
 
     def _reset(self):
-        """Reload current section from camera_config.json into all sliders and re-apply v4l2."""
-        full = load_camera_config() or {}
+        """Reload current section from config.json into all sliders and re-apply v4l2."""
+        full = load_config() or {}
         section_data = full.get(self.section, {})
 
         if self.show_hsv:
@@ -382,11 +382,11 @@ class TunerApp:
         self.status_lbl.configure(text=f"↺ reloaded from JSON ({self.section})", foreground="#cc6600")
 
     def _save(self):
-        full = load_camera_config() or {}
+        full = load_config() or {}
         full[self.section] = self._current_section_dict()
-        save_camera_config(full)
+        save_config(full)
         self.status_lbl.configure(text=f"✓ saved ({self.section} section)", foreground="#006600")
-        print(f"✓ saved to camera_config.json ({self.section} section)")
+        print(f"✓ saved to config.json ({self.section} section)")
 
     def _print(self):
         data = self._current_section_dict()
@@ -408,16 +408,18 @@ class TunerApp:
 
 
 def main():
+    cfg = load_config()
+
     section = os.environ.get("CAMERA_SECTION", "top").lower()
     if section not in ("top", "wrist"):
         print(f"ERROR: CAMERA_SECTION must be 'top' or 'wrist' (got '{section}')", file=sys.stderr)
         sys.exit(1)
 
-    top_index = int(os.environ.get("CAMERA_TOP_INDEX", 2))
-    wrist_index = int(os.environ.get("CAMERA_WRIST_INDEX", 0))
-    width = int(os.environ.get("CAMERA_WIDTH", 640))
-    height = int(os.environ.get("CAMERA_HEIGHT", 480))
-    fps = int(os.environ.get("CAMERA_FPS", 30))
+    top_index = int(os.environ.get("CAMERA_TOP_INDEX", cfg.get("camera_top_index", 2)))
+    wrist_index = int(os.environ.get("CAMERA_WRIST_INDEX", cfg.get("camera_wrist_index", 0)))
+    width = int(os.environ.get("CAMERA_WIDTH", cfg.get("camera_width", 640)))
+    height = int(os.environ.get("CAMERA_HEIGHT", cfg.get("camera_height", 480)))
+    fps = int(os.environ.get("CAMERA_FPS", cfg.get("camera_fps", 30)))
 
     app = TunerApp(section, top_index, wrist_index, width, height, fps)
     app.run()
