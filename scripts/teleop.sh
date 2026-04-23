@@ -14,14 +14,9 @@ CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-2}"
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
-V_GAMMA="${V_GAMMA:-1.0}"
-CLAHE_CLIP_LIMIT="${CLAHE_CLIP_LIMIT:-2.0}"
-CLAHE_TILE_GRID_SIZE="${CLAHE_TILE_GRID_SIZE:-8}"
-S_SCALE="${S_SCALE:-1.0}"
 
 CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-HSV_EXTRA="v_gamma: ${V_GAMMA}, clahe_clip_limit: ${CLAHE_CLIP_LIMIT}, clahe_tile_grid_size: ${CLAHE_TILE_GRID_SIZE}, s_scale: ${S_SCALE}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}, ${HSV_EXTRA}}, wrist: {type: opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
+CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
 
 python scripts/teleop.py \
   --robot.type=omx_follower \

@@ -62,9 +62,9 @@ om_ws/
 - **Linux**: udev rules로 `/dev/omx_follower`, `/dev/omx_leader` symlink를 만들어놓고 스크립트에서 기본값으로 사용.
 - **Mac**: udev가 없어 `scripts/setup_ports_mac.sh`가 `ioreg`로 USB Serial Number 매칭해 `OMX_FOLLOWER_PORT`, `OMX_LEADER_PORT` 환경변수를 설정. 스크립트들은 `${OMX_FOLLOWER_PORT:-/dev/omx_follower}` 형태로 둘 다 지원.
 
-### scripts/_env.sh (gitignored)
+### scripts/_env.sh
 
-record.sh/teleop.sh/inference.sh가 시작 시 `scripts/_env.sh`가 있으면 자동 source. 머신별 환경변수(시리얼 번호, 카메라 인덱스, HF_USER 등)를 커밋 없이 로컬에 저장하는 용도.
+record.sh/teleop.sh/inference.sh가 시작 시 `scripts/_env.sh`가 있으면 자동 source. 시리얼 번호, 카메라 인덱스, HF_USER, HSV 파라미터, v4l2 제어값 등을 저장. 커밋되어 있으므로 수정 시 의도한 변경인지 diff 확인 후 커밋.
 
 ## Data Flow
 

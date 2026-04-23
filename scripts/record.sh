@@ -34,17 +34,9 @@ CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
 
-# HSV V채널 CLAHE 평준화 파라미터 (hsv_opencv 전용)
-# clip_limit 낮음(1~2): 자연스러움. 높음(3~5): 그림자/역광에 공격적
-# tile_grid_size 큼: 세부 대비 ↑. 작음: 전체 대비 ↑
-V_GAMMA="${V_GAMMA:-1.0}"
-CLAHE_CLIP_LIMIT="${CLAHE_CLIP_LIMIT:-2.0}"
-CLAHE_TILE_GRID_SIZE="${CLAHE_TILE_GRID_SIZE:-8}"
-S_SCALE="${S_SCALE:-1.0}"
-
 REPO_ID="${REPO_ID:-${HF_USER}/omx_record}"
 SINGLE_TASK="${SINGLE_TASK:-}"
-NUM_EPISODES="${NUM_EPISODES:-14}"
+NUM_EPISODES="${NUM_EPISODES:-10}"
 EPISODE_TIME_S="${EPISODE_TIME_S:-60}"
 RESET_TIME_S="${RESET_TIME_S:-10}"
 DISPLAY_DATA="${DISPLAY_DATA:-true}"
@@ -68,8 +60,7 @@ if [[ -z "${DATASET_ROOT:-}" ]]; then
 fi
 
 CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-HSV_EXTRA="v_gamma: ${V_GAMMA}, clahe_clip_limit: ${CLAHE_CLIP_LIMIT}, clahe_tile_grid_size: ${CLAHE_TILE_GRID_SIZE}, s_scale: ${S_SCALE}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}, ${HSV_EXTRA}}, wrist: {type: opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
+CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
 
 echo "=== LeRobot Record ==="
 echo "Cameras: top=${CAMERA_TOP_INDEX}, wrist=${CAMERA_WRIST_INDEX} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"

@@ -26,11 +26,14 @@ Run:
 """
 
 import logging
+import signal
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from pprint import pformat
+
+import cv2
 
 from lerobot.cameras import CameraConfig  # noqa: F401  — ensures camera ChoiceRegistry is loaded
 from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401  — registers "opencv" choice
@@ -98,6 +101,8 @@ class InferConfig:
     display_compressed_images: bool = False
     # Speak status messages via system TTS (macOS `say`, Linux `spd-say`).
     play_sounds: bool = True
+    # Save the top camera stream to an .mp4 during inference. None disables.
+    record_top_video_path: str | None = None
 
     def __post_init__(self):
         # Mirror RecordConfig: re-parse policy path so --policy.path loads the checkpoint config.
@@ -154,6 +159,10 @@ def infer(cfg: InferConfig) -> None:
 
     dataset = None
     listener = None
+    top_video_writer = None
+    top_video_path = Path(cfg.record_top_video_path) if cfg.record_top_video_path else None
+    if top_video_path is not None:
+        top_video_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         dataset = LeRobotDataset.create(
@@ -209,6 +218,20 @@ def infer(cfg: InferConfig) -> None:
                 obs_processed = robot_observation_processor(obs)
                 observation_frame = build_dataset_frame(features, obs_processed, prefix=OBS_STR)
 
+                if top_video_path is not None:
+                    top_frame = obs_processed.get("top")
+                    if top_frame is not None:
+                        if top_video_writer is None:
+                            h, w = top_frame.shape[:2]
+                            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                            top_video_writer = cv2.VideoWriter(
+                                str(top_video_path), fourcc, cfg.fps, (w, h)
+                            )
+                            logging.info(
+                                f"Recording top camera to {top_video_path} ({w}x{h} @ {cfg.fps}fps)"
+                            )
+                        top_video_writer.write(cv2.cvtColor(top_frame, cv2.COLOR_RGB2BGR))
+
                 action_values = predict_action(
                     observation=observation_frame,
                     policy=policy,
@@ -241,6 +264,18 @@ def infer(cfg: InferConfig) -> None:
 
             iteration += 1
     finally:
+        # mp4 moov atom 이 써지기 전에 두 번째 Ctrl+C 가 들어와 release 가 스킵되면
+        # 영상이 재생 불가 상태로 남음. release 동안 SIGINT 를 무시해서 반드시 완료시킴.
+        if top_video_writer is not None:
+            prev_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            try:
+                top_video_writer.release()
+                logging.info(f"Saved top camera video to {top_video_path}")
+            except Exception as e:
+                logging.error(f"Failed to release video writer: {e}")
+            finally:
+                signal.signal(signal.SIGINT, prev_sigint)
+
         log_say("Stopping inference", cfg.play_sounds, blocking=True)
 
         if robot.is_connected:
