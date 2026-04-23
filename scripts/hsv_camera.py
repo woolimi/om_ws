@@ -14,10 +14,12 @@ OpenCV 의 VideoCapture 가 카메라를 열 때 일부 드라이버에서 v4l2 
   }"
 """
 
+import json
 import logging
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -26,6 +28,38 @@ from numpy.typing import NDArray
 
 from lerobot.cameras.configs import CameraConfig, ColorMode
 from lerobot.cameras.opencv import OpenCVCamera, OpenCVCameraConfig
+
+CONFIG_PATH = Path(__file__).parent / "camera_config.json"
+
+
+def load_camera_config() -> dict[str, Any]:
+    """camera_config.json 읽기. 없거나 파싱 실패하면 빈 dict."""
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logging.warning("Failed to read %s: %s", CONFIG_PATH, e)
+        return {}
+
+
+def save_camera_config(data: dict[str, Any]) -> None:
+    """전체 dict 를 camera_config.json 에 저장."""
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+_CFG = load_camera_config()
+
+
+def _top_config() -> dict[str, Any]:
+    return _CFG.get("top", {})
+
+
+def _wrist_config() -> dict[str, Any]:
+    return _CFG.get("wrist", {})
 
 
 def _apply_v4l2_controls(device: str, controls: dict[str, int]) -> None:
@@ -46,24 +80,27 @@ def _apply_v4l2_controls(device: str, controls: dict[str, int]) -> None:
         logging.info("Applied v4l2 controls to %s: %s", device, controls)
 
 
+_DEFAULT_WRIST_V4L2 = {
+    "white_balance_automatic": 1,
+    "auto_exposure": 3,
+    "saturation": 64,
+    "brightness": 0,
+    "contrast": 32,
+    "gamma": 100,
+    "hue": 0,
+}
+
+
 @CameraConfig.register_subclass("v4l2_opencv")
 @dataclass
 class V4L2OpenCVCameraConfig(OpenCVCameraConfig):
     """OpenCVCameraConfig + connect() 이후 v4l2-ctl 자동 적용.
 
-    기본값은 wrist 카메라(Innomaker) 용 "자동(기본값) 복구" 프리셋.
+    기본값은 camera_config.json 의 wrist.v4l2_controls 에서 로드.
     """
 
     v4l2_controls: dict[str, int] = field(
-        default_factory=lambda: {
-            "white_balance_automatic": 1,
-            "auto_exposure": 3,
-            "saturation": 64,
-            "brightness": 0,
-            "contrast": 32,
-            "gamma": 100,
-            "hue": 0,
-        }
+        default_factory=lambda: dict(_wrist_config().get("v4l2_controls", _DEFAULT_WRIST_V4L2))
     )
 
 
@@ -82,34 +119,32 @@ class V4L2OpenCVCamera(OpenCVCamera):
         _apply_v4l2_controls(self._v4l2_device, self._v4l2_controls)
 
 
+_DEFAULT_TOP_V4L2 = {
+    "white_balance_automatic": 0,
+    "white_balance_temperature": 5000,
+    "auto_exposure": 1,
+    "exposure_time_absolute": 80,
+    "saturation": 255,
+}
+
+
 @CameraConfig.register_subclass("hsv_opencv")
 @dataclass
 class HsvOpenCVCameraConfig(V4L2OpenCVCameraConfig):
     """V4L2OpenCVCameraConfig + HSV 후처리 파라미터.
 
-    기본 v4l2_controls 를 top 카메라(USB 2.0 Camera) 용 반사광 완화 프리셋으로 오버라이드.
-    Applied in order on V: gamma → CLAHE. Applied on S: saturation scale (S * s_scale, clipped to 255).
+    모든 기본값은 camera_config.json 의 top 섹션에서 로드.
+    Applied in order on V: gamma → CLAHE. Applied on S: saturation scale (S * s_scale).
     각각 기본값이면 비활성: v_gamma=1.0, clahe_clip_limit<=0, s_scale=1.0.
     """
 
-    # gamma > 1 어둡게, gamma < 1 밝게. 1.0 이면 비활성.
-    v_gamma: float = 3.0
-    # clip_limit <= 0 이면 CLAHE 비활성. 낮음(1~2): 자연스러움. 높음(3~5): 그림자/역광에 공격적.
-    clahe_clip_limit: float = 4.0
-    # tile_grid_size 큼: 세부 대비 ↑. 작음: 전체 대비 ↑.
-    clahe_tile_grid_size: int = 8
-    # 채도 배율. > 1 색 진하게, < 1 색 옅게.
-    s_scale: float = 1.0
+    v_gamma: float = _top_config().get("v_gamma", 3.0)
+    clahe_clip_limit: float = _top_config().get("clahe_clip_limit", 4.0)
+    clahe_tile_grid_size: int = _top_config().get("clahe_tile_grid_size", 8)
+    s_scale: float = _top_config().get("s_scale", 1.0)
 
-    # top 카메라용 v4l2: 반사광 완화를 위한 manual WB + 짧은 exposure.
     v4l2_controls: dict[str, int] = field(
-        default_factory=lambda: {
-            "white_balance_automatic": 0,
-            "white_balance_temperature": 5000,
-            "auto_exposure": 1,
-            "exposure_time_absolute": 80,
-            "saturation": 255,
-        }
+        default_factory=lambda: dict(_top_config().get("v4l2_controls", _DEFAULT_TOP_V4L2))
     )
 
 

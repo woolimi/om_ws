@@ -1,0 +1,26 @@
+{
+  "top": {
+    "v_gamma": 1.61,
+    "clahe_clip_limit": 4.0,
+    "clahe_tile_grid_size": 8,
+    "s_scale": 5.0,
+    "v4l2_controls": {
+      "white_balance_automatic": 0,
+      "white_balance_temperature": 5000,
+      "auto_exposure": 1,
+      "exposure_time_absolute": 80,
+      "saturation": 255
+    }
+  },
+  "wrist": {
+    "v4l2_controls": {
+      "white_balance_automatic": 1,
+      "auto_exposure": 3,
+      "saturation": 64,
+      "brightness": 0,
+      "contrast": 32,
+      "gamma": 100,
+      "hue": 0
+    }
+  }
+}
