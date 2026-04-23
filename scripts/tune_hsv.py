@@ -139,137 +139,179 @@ class LabeledSlider(ttk.Frame):
 
 
 class TunerApp:
-    def __init__(self, section, index, width, height, fps):
+    def __init__(self, section, top_index, wrist_index, width, height, fps):
         self.section = section
-        self.show_hsv = section == "top"
-        self.device = f"/dev/video{index}"
+        self.top_index = top_index
+        self.wrist_index = wrist_index
         self.width = width
         self.height = height
+        self.fps = fps
+        self.cap = None
 
-        # 기본값
+        # UI root
+        self.root = tk.Tk()
+        self._imgtk_raw = None
+
+        self._build_static_ui()
+        self._open_section(section)
+        self._update_preview()
+
+    def _open_section(self, section):
+        """카메라 열기 + 기본값 로드 + v4l2 적용 + 슬라이더 rebuild."""
+        self.section = section
+        self.show_hsv = section == "top"
+        index = self.top_index if section == "top" else self.wrist_index
+        self.device = f"/dev/video{index}"
+
         if section == "top":
             self.defaults = HsvOpenCVCameraConfig(index_or_path=0)
         else:
             self.defaults = V4L2OpenCVCameraConfig(index_or_path=0)
 
-        # 카메라
+        # 기존 카메라 닫기
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+
         self.cap = cv2.VideoCapture(index)
         if not self.cap.isOpened():
-            raise RuntimeError(f"cannot open camera index {index}")
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.cap.set(cv2.CAP_PROP_FPS, fps)
+            self.status_lbl.configure(text=f"ERROR: cannot open /dev/video{index}", foreground="#cc0000")
+            return
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        self.cap.set(cv2.CAP_PROP_FPS, self.fps)
 
         self.current_v4l2 = dict(self.defaults.v4l2_controls)
         apply_v4l2(self.device, self.current_v4l2)
 
-        # UI
-        self.root = tk.Tk()
         self.root.title(f"Camera Tuner — {section}  (/dev/video{index})")
-        self._build_ui()
+        self.preview_title_lbl.configure(text=f"[{section}]   raw  →  processed")
+        self._build_sliders()
+        self.status_lbl.configure(text=f"switched to [{section}]", foreground="#006600")
 
-        # 프리뷰 표시용 변수 (tkinter garbage collector 방지)
-        self._imgtk_raw = None
-        self._imgtk_proc = None
-
-        self._update_preview()
-
-    def _build_ui(self):
-        # 루트 레이아웃: 좌 컨트롤 패널 / 우 프리뷰
+    def _build_static_ui(self):
+        """변하지 않는 뼈대 (레이아웃 + 섹션 토글 + 버튼 + 프리뷰 위젯)."""
         main = ttk.PanedWindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True)
 
-        # === 좌측 컨트롤 ===
+        # === Left: control panel ===
         controls = ttk.Frame(main, padding=10)
         main.add(controls, weight=0)
 
-        # scrollable canvas 로 많은 슬라이더 담기
         canvas = tk.Canvas(controls, width=360, highlightthickness=0)
         scrollbar = ttk.Scrollbar(controls, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
 
-        inner = ttk.Frame(canvas)
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        # 마우스 휠 스크롤
+        self.inner = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
         canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
         canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
 
-        self.hsv_sliders = {}
-        self.v4l2_sliders = {}
+        # Section toggle (top of controls)
+        toggle_frame = ttk.Frame(self.inner)
+        toggle_frame.pack(fill="x", pady=(0, 10))
+        ttk.Label(toggle_frame, text="section:",
+                  font=("TkDefaultFont", 10, "bold")).pack(side="left")
+        self.section_var = tk.StringVar(value=self.section)
+        ttk.Radiobutton(toggle_frame, text="top", variable=self.section_var,
+                        value="top", command=self._on_section_toggle).pack(side="left", padx=5)
+        ttk.Radiobutton(toggle_frame, text="wrist", variable=self.section_var,
+                        value="wrist", command=self._on_section_toggle).pack(side="left")
 
-        # HSV section (top only)
-        if self.show_hsv:
-            ttk.Label(inner, text="HSV post-processing", font=("TkDefaultFont", 12, "bold"),
-                      foreground="#003366").pack(anchor="w", pady=(0, 5))
+        ttk.Separator(self.inner, orient="horizontal").pack(fill="x", pady=(0, 10))
 
-            self.hsv_sliders["v_gamma"] = LabeledSlider(
-                inner, "v_gamma", 0.1, 5.0, self.defaults.v_gamma, is_float=True,
-                desc=">1 darker / <1 brighter / 1.0 = disabled"
-            )
-            self.hsv_sliders["v_gamma"].pack(fill="x", pady=4)
+        # Slider container (rebuilt on section switch)
+        self.sliders_container = ttk.Frame(self.inner)
+        self.sliders_container.pack(fill="x")
 
-            self.hsv_sliders["clahe_clip_limit"] = LabeledSlider(
-                inner, "clahe_clip_limit", 0.0, 10.0, self.defaults.clahe_clip_limit,
-                is_float=True, desc="0 = CLAHE off / 1~2 natural / 3~5 aggressive"
-            )
-            self.hsv_sliders["clahe_clip_limit"].pack(fill="x", pady=4)
-
-            self.hsv_sliders["clahe_tile_grid_size"] = LabeledSlider(
-                inner, "clahe_tile_grid_size", 2, 32, self.defaults.clahe_tile_grid_size,
-                is_float=False, desc="larger = local detail / smaller = global contrast"
-            )
-            self.hsv_sliders["clahe_tile_grid_size"].pack(fill="x", pady=4)
-
-            self.hsv_sliders["s_scale"] = LabeledSlider(
-                inner, "s_scale", 0.1, 5.0, self.defaults.s_scale, is_float=True,
-                desc=">1 more saturated / 1.0 = disabled"
-            )
-            self.hsv_sliders["s_scale"].pack(fill="x", pady=4)
-
-            ttk.Separator(inner, orient="horizontal").pack(fill="x", pady=10)
-
-        # v4l2 section
-        ttk.Label(inner, text="v4l2 hardware controls", font=("TkDefaultFont", 12, "bold"),
-                  foreground="#003366").pack(anchor="w", pady=(0, 5))
-
-        for key, initial in self.current_v4l2.items():
-            meta = V4L2_CONTROL_META.get(key, (0, 255, 1, ""))
-            lo, hi, _step, desc = meta
-            slider = LabeledSlider(
-                inner, key, lo, hi, initial, is_float=False, desc=desc,
-                on_change=self._on_v4l2_change,
-            )
-            slider.pack(fill="x", pady=4)
-            self.v4l2_sliders[key] = slider
-
-        # 버튼
-        ttk.Separator(inner, orient="horizontal").pack(fill="x", pady=10)
-        btns = ttk.Frame(inner)
+        # Buttons (static)
+        ttk.Separator(self.inner, orient="horizontal").pack(fill="x", pady=10)
+        btns = ttk.Frame(self.inner)
         btns.pack(fill="x", pady=(0, 5))
         ttk.Button(btns, text="💾 Save", command=self._save, width=10).pack(side="left", padx=2)
         ttk.Button(btns, text="↺ Reset", command=self._reset, width=10).pack(side="left", padx=2)
         ttk.Button(btns, text="📋 Print", command=self._print, width=10).pack(side="left", padx=2)
         ttk.Button(btns, text="✖ Quit", command=self._quit, width=8).pack(side="left", padx=2)
 
-        self.status_lbl = ttk.Label(inner, text="ready.", foreground="#006600")
+        self.status_lbl = ttk.Label(self.inner, text="ready.", foreground="#006600")
         self.status_lbl.pack(anchor="w", pady=(5, 0))
 
-        # === 우측 프리뷰 ===
+        # === Right: preview ===
         preview = ttk.Frame(main, padding=5)
         main.add(preview, weight=1)
 
-        ttk.Label(preview, text=f"[{self.section}]   raw  →  processed",
-                  font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
+        self.preview_title_lbl = ttk.Label(preview, text="",
+                                           font=("TkDefaultFont", 10, "bold"))
+        self.preview_title_lbl.pack(anchor="w")
 
         self.canvas_preview = tk.Label(preview, bg="#222")
         self.canvas_preview.pack(fill="both", expand=True, pady=5)
 
-        # 창 닫기 핸들러
+        self.hsv_sliders = {}
+        self.v4l2_sliders = {}
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
+
+    def _build_sliders(self):
+        """현재 섹션에 맞춰 sliders_container 안에 HSV + v4l2 슬라이더 재구성."""
+        for w in self.sliders_container.winfo_children():
+            w.destroy()
+        self.hsv_sliders = {}
+        self.v4l2_sliders = {}
+
+        if self.show_hsv:
+            ttk.Label(self.sliders_container, text="HSV post-processing",
+                      font=("TkDefaultFont", 12, "bold"), foreground="#003366"
+                      ).pack(anchor="w", pady=(0, 5))
+
+            self.hsv_sliders["v_gamma"] = LabeledSlider(
+                self.sliders_container, "v_gamma", 0.1, 5.0, self.defaults.v_gamma,
+                is_float=True, desc=">1 darker / <1 brighter / 1.0 = disabled")
+            self.hsv_sliders["v_gamma"].pack(fill="x", pady=4)
+
+            self.hsv_sliders["clahe_clip_limit"] = LabeledSlider(
+                self.sliders_container, "clahe_clip_limit", 0.0, 10.0,
+                self.defaults.clahe_clip_limit, is_float=True,
+                desc="0 = CLAHE off / 1~2 natural / 3~5 aggressive")
+            self.hsv_sliders["clahe_clip_limit"].pack(fill="x", pady=4)
+
+            self.hsv_sliders["clahe_tile_grid_size"] = LabeledSlider(
+                self.sliders_container, "clahe_tile_grid_size", 2, 32,
+                self.defaults.clahe_tile_grid_size, is_float=False,
+                desc="larger = local detail / smaller = global contrast")
+            self.hsv_sliders["clahe_tile_grid_size"].pack(fill="x", pady=4)
+
+            self.hsv_sliders["s_scale"] = LabeledSlider(
+                self.sliders_container, "s_scale", 0.1, 5.0, self.defaults.s_scale,
+                is_float=True, desc=">1 more saturated / 1.0 = disabled")
+            self.hsv_sliders["s_scale"].pack(fill="x", pady=4)
+
+            ttk.Separator(self.sliders_container, orient="horizontal").pack(fill="x", pady=10)
+
+        ttk.Label(self.sliders_container, text="v4l2 hardware controls",
+                  font=("TkDefaultFont", 12, "bold"), foreground="#003366"
+                  ).pack(anchor="w", pady=(0, 5))
+
+        for key, initial in self.current_v4l2.items():
+            meta = V4L2_CONTROL_META.get(key, (0, 255, 1, ""))
+            lo, hi, _step, desc = meta
+            slider = LabeledSlider(
+                self.sliders_container, key, lo, hi, initial, is_float=False,
+                desc=desc, on_change=self._on_v4l2_change,
+            )
+            slider.pack(fill="x", pady=4)
+            self.v4l2_sliders[key] = slider
+
+    def _on_section_toggle(self):
+        new_section = self.section_var.get()
+        if new_section == self.section:
+            return
+        self._open_section(new_section)
 
     def _on_v4l2_change(self, _value):
         # 모든 v4l2 슬라이더 값을 읽어 current_v4l2 갱신 후 재적용
@@ -371,17 +413,13 @@ def main():
         print(f"ERROR: CAMERA_SECTION must be 'top' or 'wrist' (got '{section}')", file=sys.stderr)
         sys.exit(1)
 
-    if section == "top":
-        default_index = int(os.environ.get("CAMERA_TOP_INDEX", 2))
-    else:
-        default_index = int(os.environ.get("CAMERA_WRIST_INDEX", 0))
-
-    index = int(os.environ.get("CAMERA_INDEX", default_index))
+    top_index = int(os.environ.get("CAMERA_TOP_INDEX", 2))
+    wrist_index = int(os.environ.get("CAMERA_WRIST_INDEX", 0))
     width = int(os.environ.get("CAMERA_WIDTH", 640))
     height = int(os.environ.get("CAMERA_HEIGHT", 480))
     fps = int(os.environ.get("CAMERA_FPS", 30))
 
-    app = TunerApp(section, index, width, height, fps)
+    app = TunerApp(section, top_index, wrist_index, width, height, fps)
     app.run()
 
 
