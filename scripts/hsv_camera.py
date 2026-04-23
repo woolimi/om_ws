@@ -120,8 +120,6 @@ class V4L2OpenCVCamera(OpenCVCamera):
 
 
 _DEFAULT_TOP_V4L2 = {
-    "white_balance_automatic": 0,
-    "white_balance_temperature": 5000,
     "auto_exposure": 1,
     "exposure_time_absolute": 80,
     "saturation": 255,

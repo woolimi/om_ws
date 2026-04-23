@@ -1,15 +1,13 @@
 {
   "top": {
-    "v_gamma": 1.61,
+    "v_gamma": 1.65,
     "clahe_clip_limit": 4.0,
     "clahe_tile_grid_size": 8,
     "s_scale": 5.0,
     "v4l2_controls": {
-      "white_balance_automatic": 0,
-      "white_balance_temperature": 5000,
       "auto_exposure": 1,
-      "exposure_time_absolute": 80,
-      "saturation": 255
+      "exposure_time_absolute": 1,
+      "saturation": 163
     }
   },
   "wrist": {
