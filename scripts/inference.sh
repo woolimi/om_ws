@@ -14,7 +14,8 @@
 #   RECORD_TOP_VIDEO  top 카메라 mp4 저장 (boolean, 기본: false)
 #                     - true/1/yes: outputs/inference_videos/top_<timestamp>.mp4 자동 생성
 #                     - false/0/no/빈 값: 비활성
-#   CAMERA_TOP / CAMERA_WRIST / CAMERA_WIDTH / CAMERA_HEIGHT / CAMERA_FPS
+#
+# 카메라 설정(경로/해상도/FPS/HSV/v4l2) 은 scripts/config.json 에서 관리.
 #
 # ACT 정책 추론 파라미터 (ACT 모델에만 적용):
 #   N_ACTION_STEPS             정책이 예측한 chunk 중 실제 실행할 액션 수 (기본: 비설정 = 모델 기본값)
@@ -36,13 +37,8 @@ cd "$SCRIPT_DIR/.."
 # 로컬 환경 설정 자동 로드 (있으면)
 [[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
-if [[ -z "${CAMERA_TOP:-}" || -z "${CAMERA_WRIST:-}" ]]; then
-  echo "Error: CAMERA_TOP / CAMERA_WRIST must be set (check scripts/config.json)."
-  exit 1
-fi
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-30}"
+CAMERAS_JSON=$(python3 "$SCRIPT_DIR/_cameras.py") || exit 1
+CAMERA_FPS=$(python3 "$SCRIPT_DIR/_cameras.py" --key camera_fps) || exit 1
 EPISODE_TIME_S="${EPISODE_TIME_S:-30}"
 DISPLAY_DATA="${DISPLAY_DATA:-true}"
 PLAY_SOUNDS="${PLAY_SOUNDS:-true}"
@@ -147,9 +143,6 @@ if [[ -z "$SINGLE_TASK" ]]; then
   SINGLE_TASK="${SINGLE_TASK:-Policy inference}"
 fi
 
-CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST}, ${CAM_BASE}} }"
-
 POLICY_ARGS=(--policy.device="${POLICY_DEVICE}")
 [[ -n "$N_ACTION_STEPS" ]] && POLICY_ARGS+=(--policy.n_action_steps="${N_ACTION_STEPS}")
 [[ -n "$TEMPORAL_ENSEMBLE_COEFF" ]] && POLICY_ARGS+=(--policy.temporal_ensemble_coeff="${TEMPORAL_ENSEMBLE_COEFF}")
@@ -160,7 +153,7 @@ RECORD_ARGS=()
 echo "=== LeRobot Inference (Ctrl+C to stop) ==="
 echo "Policy:   $POLICY_PATH"
 echo "Device:   ${POLICY_DEVICE}"
-echo "Cameras:  top=${CAMERA_TOP}, wrist=${CAMERA_WRIST} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
+echo "Cameras:  ${CAMERAS_JSON}"
 echo "Episode:  ${EPISODE_TIME_S}s"
 echo "Task:     ${SINGLE_TASK}"
 [[ -n "$N_ACTION_STEPS" ]] && echo "n_action_steps: ${N_ACTION_STEPS}"

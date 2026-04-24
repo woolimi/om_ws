@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # LeRobot 데이터 수집 — 리더암으로 조작하면서 에피소드 녹화
 #
-# 카메라:
-#   wrist: Innomaker-U20CAM-720P (/dev/video2)
-#   top:   USB 2.0 Camera (/dev/video0)
+# 카메라 설정(경로/해상도/FPS/HSV/v4l2) 은 scripts/config.json 에서 관리.
 #
 # 사용 예:
 #   ./scripts/record.sh
@@ -28,13 +26,7 @@ cd "$SCRIPT_DIR/.."
 # 로컬 환경 설정 자동 로드 (있으면)
 [[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
-if [[ -z "${CAMERA_TOP:-}" || -z "${CAMERA_WRIST:-}" ]]; then
-  echo "Error: CAMERA_TOP / CAMERA_WRIST must be set (check scripts/config.json)."
-  exit 1
-fi
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-30}"
+CAMERAS_JSON=$(python3 "$SCRIPT_DIR/_cameras.py") || exit 1
 
 REPO_ID="${REPO_ID:-${HF_USER}/omx_record}"
 SINGLE_TASK="${SINGLE_TASK:-}"
@@ -61,11 +53,8 @@ if [[ -z "${DATASET_ROOT:-}" ]]; then
   DATASET_ROOT="./data/${TASK_DIR}"
 fi
 
-CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST}, ${CAM_BASE}} }"
-
 echo "=== LeRobot Record ==="
-echo "Cameras: top=${CAMERA_TOP}, wrist=${CAMERA_WRIST} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
+echo "Cameras: ${CAMERAS_JSON}"
 echo "Dataset: repo_id=${REPO_ID}  root=${DATASET_ROOT}  num_episodes=${NUM_EPISODES}"
 echo "Task:    ${SINGLE_TASK}"
 echo ""

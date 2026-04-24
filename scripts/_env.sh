@@ -1,30 +1,11 @@
 #!/usr/bin/env bash
 # 로컬 머신 환경 설정 — teleop/record/inference 스크립트가 자동 source
+#
+# 카메라 설정(인덱스/경로/해상도/FPS/HSV/v4l2) 은 모두 scripts/config.json 에서
+# 관리하며, shell 쪽은 scripts/_cameras.py 헬퍼로 직접 읽는다.
+# 여기는 config.json 에 담기 부적합한 머신별 설정(시리얼, HF_USER 등)만.
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_CONFIG_JSON="$_SCRIPT_DIR/config.json"
-
-# ── config.json 에서 카메라 설정 로드 ─────────────────────────
-# 환경변수가 이미 설정되어 있으면 config.json 값을 덮어쓰지 않음
-# 값이 by-id 경로 같은 특수문자를 포함해도 안전하도록 shlex.quote 사용
-if [[ -f "$_CONFIG_JSON" ]]; then
-  eval "$(python3 -c "
-import json, os, shlex, sys
-try:
-    with open('$_CONFIG_JSON') as f:
-        cfg = json.load(f)
-except Exception:
-    sys.exit(0)
-keys = [
-    'camera_top', 'camera_wrist',
-    'camera_width', 'camera_height', 'camera_fps',
-]
-for k in keys:
-    env_key = k.upper()
-    if env_key not in os.environ and k in cfg:
-        print(f'export {env_key}={shlex.quote(str(cfg[k]))}')
-")"
-fi
 
 # ── Mac 전용: Dynamixel USB 시리얼 (OpenRB-150) ─────────────
 # Linux 에서는 무시됨 (아래 Darwin 가드로 동작 안 함)
