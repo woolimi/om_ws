@@ -19,6 +19,7 @@
     "v4l2_controls": {
       "white_balance_automatic": 1,
       "auto_exposure": 3,
+      "exposure_dynamic_framerate": 0,
       "saturation": 64,
       "brightness": 0,
       "contrast": 32,
