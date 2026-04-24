@@ -51,11 +51,6 @@ def save_config(data: dict[str, Any]) -> None:
         f.write("\n")
 
 
-# 하위 호환 alias
-load_camera_config = load_config
-save_camera_config = save_config
-
-
 _CFG = load_config()
 
 

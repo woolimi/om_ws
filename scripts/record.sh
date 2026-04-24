@@ -28,8 +28,10 @@ cd "$SCRIPT_DIR/.."
 # 로컬 환경 설정 자동 로드 (있으면)
 [[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
-CAMERA_TOP_INDEX="${CAMERA_TOP_INDEX:-2}"
-CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-0}"
+if [[ -z "${CAMERA_TOP:-}" || -z "${CAMERA_WRIST:-}" ]]; then
+  echo "Error: CAMERA_TOP / CAMERA_WRIST must be set (check scripts/config.json)."
+  exit 1
+fi
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
@@ -60,10 +62,10 @@ if [[ -z "${DATASET_ROOT:-}" ]]; then
 fi
 
 CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
+CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST}, ${CAM_BASE}} }"
 
 echo "=== LeRobot Record ==="
-echo "Cameras: top=${CAMERA_TOP_INDEX}, wrist=${CAMERA_WRIST_INDEX} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
+echo "Cameras: top=${CAMERA_TOP}, wrist=${CAMERA_WRIST} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
 echo "Dataset: repo_id=${REPO_ID}  root=${DATASET_ROOT}  num_episodes=${NUM_EPISODES}"
 echo "Task:    ${SINGLE_TASK}"
 echo ""

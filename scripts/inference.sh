@@ -14,7 +14,7 @@
 #   RECORD_TOP_VIDEO  top 카메라 mp4 저장 (boolean, 기본: false)
 #                     - true/1/yes: outputs/inference_videos/top_<timestamp>.mp4 자동 생성
 #                     - false/0/no/빈 값: 비활성
-#   CAMERA_TOP_INDEX / CAMERA_WRIST_INDEX / CAMERA_WIDTH / CAMERA_HEIGHT / CAMERA_FPS
+#   CAMERA_TOP / CAMERA_WRIST / CAMERA_WIDTH / CAMERA_HEIGHT / CAMERA_FPS
 #
 # ACT 정책 추론 파라미터 (ACT 모델에만 적용):
 #   N_ACTION_STEPS             정책이 예측한 chunk 중 실제 실행할 액션 수 (기본: 비설정 = 모델 기본값)
@@ -36,8 +36,10 @@ cd "$SCRIPT_DIR/.."
 # 로컬 환경 설정 자동 로드 (있으면)
 [[ -f "$SCRIPT_DIR/_env.sh" ]] && source "$SCRIPT_DIR/_env.sh"
 
-CAMERA_TOP_INDEX="${CAMERA_TOP_INDEX:-2}"
-CAMERA_WRIST_INDEX="${CAMERA_WRIST_INDEX:-0}"
+if [[ -z "${CAMERA_TOP:-}" || -z "${CAMERA_WRIST:-}" ]]; then
+  echo "Error: CAMERA_TOP / CAMERA_WRIST must be set (check scripts/config.json)."
+  exit 1
+fi
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
@@ -146,7 +148,7 @@ if [[ -z "$SINGLE_TASK" ]]; then
 fi
 
 CAM_BASE="width: ${CAMERA_WIDTH}, height: ${CAMERA_HEIGHT}, fps: ${CAMERA_FPS}"
-CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP_INDEX}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST_INDEX}, ${CAM_BASE}} }"
+CAMERAS_JSON="{ top: {type: hsv_opencv, index_or_path: ${CAMERA_TOP}, ${CAM_BASE}}, wrist: {type: v4l2_opencv, index_or_path: ${CAMERA_WRIST}, ${CAM_BASE}} }"
 
 POLICY_ARGS=(--policy.device="${POLICY_DEVICE}")
 [[ -n "$N_ACTION_STEPS" ]] && POLICY_ARGS+=(--policy.n_action_steps="${N_ACTION_STEPS}")
@@ -158,7 +160,7 @@ RECORD_ARGS=()
 echo "=== LeRobot Inference (Ctrl+C to stop) ==="
 echo "Policy:   $POLICY_PATH"
 echo "Device:   ${POLICY_DEVICE}"
-echo "Cameras:  top=${CAMERA_TOP_INDEX}, wrist=${CAMERA_WRIST_INDEX} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
+echo "Cameras:  top=${CAMERA_TOP}, wrist=${CAMERA_WRIST} (${CAMERA_WIDTH}x${CAMERA_HEIGHT} @ ${CAMERA_FPS}fps)"
 echo "Episode:  ${EPISODE_TIME_S}s"
 echo "Task:     ${SINGLE_TASK}"
 [[ -n "$N_ACTION_STEPS" ]] && echo "n_action_steps: ${N_ACTION_STEPS}"
