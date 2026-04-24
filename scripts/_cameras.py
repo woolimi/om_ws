@@ -45,6 +45,8 @@ def main() -> int:
 
     w, h, fps = cfg["camera_width"], cfg["camera_height"], cfg["camera_fps"]
     cam_base = f"width: {w}, height: {h}, fps: {fps}"
+    if cfg.get("camera_fourcc"):
+        cam_base += f", fourcc: {cfg['camera_fourcc']}"
     print(
         f"{{ top: {{type: hsv_opencv, index_or_path: {cfg['camera_top']}, {cam_base}}}, "
         f"wrist: {{type: v4l2_opencv, index_or_path: {cfg['camera_wrist']}, {cam_base}}} }}"

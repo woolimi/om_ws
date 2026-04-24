@@ -4,6 +4,7 @@
   "camera_width": 640,
   "camera_height": 480,
   "camera_fps": 30,
+  "camera_fourcc": "MJPG",
   "top": {
     "v_gamma": 1.65,
     "clahe_clip_limit": 4.0,
